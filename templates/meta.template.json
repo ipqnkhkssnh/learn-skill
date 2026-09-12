@@ -1,0 +1,29 @@
+{
+  "name": "{{SKILL_NAME}}",
+  "title": "{{TITLE}}",
+  "system": "{{SYSTEM}}",
+  "version": "0.1.0",
+  "origin": "learned-local",
+  "createdAt": "{{DATE}}",
+  "updatedAt": "{{DATE}}",
+  "learnedBy": "learn-skill",
+  "sourceRecordings": [],
+  "environment": {
+    "type": "unknown",
+    "entry": "",
+    "network": "",
+    "writeOperationsAllowed": false
+  },
+  "coverage": {
+    "pages": 0,
+    "tasks": 0,
+    "verifiedTasks": 0
+  },
+  "channels": {
+    "preferred": "remote-a2desk",
+    "fallback": ["local-a2desk", "playwright"]
+  },
+  "unknowns": [],
+  "usageCount": 0,
+  "lastUsedAt": null
+}
