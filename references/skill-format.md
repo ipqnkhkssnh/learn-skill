@@ -24,14 +24,16 @@ DSH 扫描技能根目录，**只认一层深度**：
 
 **因此：**
 
-- 学到的技能 → `~/.agent/skills/<skill-name>/SKILL.md`
-- `~/.agent` 是指向 `~/.agents` 的**符号链接**（本机约定），两个路径是同一个目录：
+- 学到的技能 → `~/.agents/skills/<skill-name>/SKILL.md`（DSH 扫描的规范路径）
+- POSIX 上 `~/.agent` 通常是指向 `~/.agents` 的**符号链接**，两个路径是同一个目录：
   ```bash
-  [ -e "$HOME/.agent" ] || ln -s "$HOME/.agents" "$HOME/.agent"
+  [ -e "$HOME/.agent" ] || ln -s "$HOME/.agents" "$HOME/.agent"   # 仅 macOS / Linux
   ```
-- **抽帧缓存、原始录屏、证据截图**不要放进 `~/.agent/skills/` 根下的技能目录里，放：
+  **Windows 不要建符号链接**（普通权限建不了，且 DSH 扫的是 `%USERPROFILE%\.agents\skills`）：
+  用 `scripts/init_skill.ps1` / `scripts/install.ps1`，它们直接写规范路径。
+- **抽帧缓存、原始录屏、证据截图**不要放进 `~/.agents/skills/` 根下的技能目录里，放：
   ```
-  ~/.agent/skills/.learn-cache/<日期时间>-<录屏名>/
+  ~/.agents/skills/.learn-cache/<日期时间>-<录屏名>/
   ```
   以 `.` 开头的目录不会构成技能（没有 `<name>/SKILL.md` 结构），不会被当成技能误加载。
 
