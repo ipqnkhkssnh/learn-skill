@@ -19,6 +19,29 @@ whenToUse: 用户给出录屏/视频/截图序列并要求"学会"其中操作�
 
 两种模式共用同一套理解方法与落盘格式（§3–§6）。
 
+## 0.5 平台与脚本对照（先选对脚本再动手）
+
+同一套能力有两组入口脚本，产物目录结构**完全一致**（`frames/` + `manifest.json` + `index.md`），
+所以笔记、投喂、回写流程都不用改：
+
+| 能力 | macOS / Linux（`.sh`） | Windows（`.ps1`，PowerShell 5.1+） |
+|---|---|---|
+| 抽帧 | `extract_frames.sh`（swift → ffmpeg → OpenCV） | `extract_frames.ps1`（ffmpeg → OpenCV） |
+| 初始化技能包 | `init_skill.sh` | `init_skill.ps1` |
+| 校验技能包 | `validate_skill.sh` | `validate_skill.ps1` |
+| 安装到技能根 | 手动 `cp -R`（见 `README.md`） | `install.ps1`（复制，不用符号链接） |
+| 逐帧 OCR（`--ocr on`） | ✅ 仅 macOS（Vision） | ❌ 明确提示后忽略 → 用 tesseract / paddleocr 单独跑 |
+| base64 打包、操作通道（a2desk / Playwright） | ✅ | ✅（需要 python；a2desk 本身支持 Windows） |
+
+规则：
+- **Windows 上优先用 `.ps1`**：不要求 bash。Git Bash / WSL 里也能跑 `.sh`，此时请显式设
+  `LEARN_SKILLS_ROOT="$HOME/.agents/skills"`（WSL 与 Windows 的 `$HOME` 不是同一个）。
+- **技能根只有一个规范位置**：`$DSH_AGENTS_HOME/skills`，默认 `~/.agents/skills`。
+  `~/.agent` 只是 POSIX 上的符号链接别名；**Windows 上不要建符号链接**，`init_skill.ps1` / `install.ps1`
+  会直接写 `~\.agents\skills`。
+- 解析顺序（两套脚本一致）：`LEARN_SKILLS_ROOT` → `DSH_AGENTS_HOME/skills` → 已存在的 `~/.agents/skills`
+  → 已存在的 `~/.agent/skills` → `~/.agents/skills`。
+
 ## 1. 铁律（违反任何一条，本次学习作废）
 
 1. **不臆造**：技能里每一句关于界面的描述，必须有帧证据或现场实测证据。推断出来的标 `confidence: inferred`；没看到的写进 `unknowns`，宁缺毋假。
@@ -51,9 +74,17 @@ bash "$SKILL_DIR/scripts/extract_frames.sh" "$VIDEO" "$OUT" \
      --interval 1 --max 300 --width 1280 --base64 --batch-size 20
 ```
 
+Windows（PowerShell，选项名与上面完全相同）：
+
+```powershell
+$SkillDir = if ($env:LEARN_SKILL_DIR) { $env:LEARN_SKILL_DIR } else { "$HOME\.agent\skills\learn-skill" }
+$Out = "$HOME\.agent\skills\.learn-cache\$(Get-Date -Format yyyyMMdd-HHmmss)-$((Get-Item $Video).BaseName)"
+pwsh -File "$SkillDir\scripts\extract_frames.ps1" $Video $Out --interval 1 --max 300 --width 1280 --base64 --batch-size 20
+```
+
 - 时长 < 60s → `--interval 0.5`；> 10min → `--interval 3`~`5`。决策表见 `references/frame-sampling.md`。
 - 表单输入 / 快速点击密集的片段 → 二次加密：`--start 62 --end 78 --interval 0.25`。
-- 表格、小字、密集字段看不清 → 加 `--ocr on`，脚本会输出逐帧识别文字，与图片互为补充。
+- 表格、小字、密集字段看不清 → 加 `--ocr on`（**仅 macOS/swift 后端**），脚本会输出逐帧识别文字，与图片互为补充；其他平台会提示忽略，需要时用 tesseract / paddleocr 单独识别 `frames/*.jpg`。
 - 产出：`frames/*.jpg`（按画面相似度去重）+ `manifest.json`（序号/时间戳/尺寸/差异值/OCR）+ `index.md` + `batches/*.json`（JPEG 的 base64 批次）。
 
 帧数控制在 **60–300 张/遍**。超过就分段学，不要一次喂几百张。
@@ -111,6 +142,7 @@ bash "$SKILL_DIR/scripts/extract_frames.sh" "$VIDEO" "$OUT" \
 ```bash
 bash "$SKILL_DIR/scripts/init_skill.sh" erp-order-management \
   --system "ERP" --title "ERP 订单管理"
+# Windows：pwsh -File "$SkillDir\scripts\init_skill.ps1" erp-order-management --system "ERP" --title "ERP 订单管理"
 ```
 
 生成到 `~/.agent/skills/erp-order-management/`，目录与字段规范见 `references/skill-format.md`。然后把 Step 3/4 的结论填进 `SKILL.md`、`pages/*.md`、`tasks/*.md`、`meta.json`。
@@ -121,6 +153,7 @@ bash "$SKILL_DIR/scripts/init_skill.sh" erp-order-management \
 
 ```bash
 bash "$SKILL_DIR/scripts/validate_skill.sh" ~/.agent/skills/erp-order-management
+# Windows：pwsh -File "$SkillDir\scripts\validate_skill.ps1" erp-order-management
 ```
 
 自检清单：
@@ -167,10 +200,13 @@ bash "$SKILL_DIR/scripts/validate_skill.sh" ~/.agent/skills/erp-order-management
 
 完整规范、模板、合并/回写算法见 `references/skill-format.md`。
 
-> **路径别名**：DSH 扫描的用户技能根是 `~/.agents/skills`（`$DSH_AGENTS_HOME/skills`）。`~/.agent` 是指向 `~/.agents` 的符号链接，因此 `~/.agent/skills` 与 `~/.agents/skills` 是同一个目录。写入前先确认别名存在：
+> **路径别名**：DSH 扫描的用户技能根是 `~/.agents/skills`（`$DSH_AGENTS_HOME/skills`）。
+> POSIX 上 `~/.agent` 通常是指向 `~/.agents` 的符号链接，两者是同一个目录；写入前可确认别名存在：
 > ```bash
-> [ -e "$HOME/.agent" ] || ln -s "$HOME/.agents" "$HOME/.agent"
+> [ -e "$HOME/.agent" ] || ln -s "$HOME/.agents" "$HOME/.agent"     # 仅 macOS / Linux
 > ```
+> **Windows 不要建符号链接**（普通权限建不了，且 DSH 扫描的是 `%USERPROFILE%\.agents\skills`）。
+> Windows 请用 `init_skill.ps1` / `install.ps1`，它们直接写规范路径；两条路径都在 §0.5 的解析顺序里。
 
 ## 5. 学习质量的红线
 

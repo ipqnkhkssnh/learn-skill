@@ -18,8 +18,11 @@ case "$1" in -h|--help) usage; exit 0;; esac
 
 TARGET="$1"
 
+# 与 init_skill.sh 保持完全一致的解析顺序（DSH 扫描根优先）。
 resolve_skills_root() {
   if [ -n "${LEARN_SKILLS_ROOT:-}" ]; then printf '%s' "$LEARN_SKILLS_ROOT"; return; fi
+  if [ -n "${DSH_AGENTS_HOME:-}" ]; then printf '%s' "$DSH_AGENTS_HOME/skills"; return; fi
+  if [ -d "$HOME/.agents/skills" ]; then printf '%s' "$HOME/.agents/skills"; return; fi
   if [ -d "$HOME/.agent/skills" ]; then printf '%s' "$HOME/.agent/skills"; return; fi
   printf '%s' "$HOME/.agents/skills"
 }
@@ -75,7 +78,8 @@ else
     fi
   fi
   if [ -n "$DESC_LINE" ]; then
-    DESC_LEN="$(printf '%s' "$DESC_LINE" | wc -c | tr -d ' ')"
+    # 只统计 description 的值（不含 "description:" 前缀），与 validate_skill.ps1 保持一致
+    DESC_LEN="$(printf '%s' "$DESC_LINE" | sed -E 's/^description:[[:space:]]*//' | wc -c | tr -d ' ')"
     [ "$DESC_LEN" -ge 30 ] && ok "description 长度合适（$DESC_LEN 字节）" \
       || warn "description 偏短（$DESC_LEN 字节），应写清「做什么 + 触发场景」"
   fi
@@ -112,7 +116,7 @@ PAGES=0; TASKS=0
 [ -d "$DIR/pages" ] && PAGES="$(count_files "$DIR/pages")"
 [ -d "$DIR/tasks" ] && TASKS="$(count_files "$DIR/tasks")"
 printf '  · pages: %s 个页面文件；tasks: %s 个任务文件\n' "$PAGES" "$TASKS"
-[ "$PAGES" -ge 1 ] || warn "没有任何页面知识（pages/*.md）——技能会缺少"系统里有什么"的部分"
+[ "$PAGES" -ge 1 ] || warn "没有任何页面知识（pages/*.md）——技能会缺少\"系统里有什么\"的部分"
 [ "$TASKS" -ge 1 ] || warn "没有任何任务配方（tasks/*.md）——技能无法直接执行"
 
 TODO_COUNT="$(grep -rIl -E 'TODO|待补|待确认' "$DIR" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')"
@@ -121,17 +125,19 @@ TODO_COUNT="$(grep -rIl -E 'TODO|待补|待确认' "$DIR" --include='*.md' 2>/de
 # ---------- 5. 凭据与敏感数据 ----------
 printf '\n[5] 凭据 / 敏感数据\n'
 SECRET_PATTERNS='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|Bearer [A-Za-z0-9._-]{20,}|(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key)[[:space:]]*[:=][[:space:]]*[^[:space:]]{3,}'
-HITS="$(grep -rInE "$SECRET_PATTERNS" "$DIR" --include='*.md' --include='*.json' --include='*.txt' 2>/dev/null \
-        | grep -viE 'TODO|待填|待补|xxx|<[^>]*>|\{\{|来源|placeholder|example' || true)"
+# 注意：模式以 "-" 开头（-----BEGIN...），必须用 -e 传，否则 grep 会把它当选项而报错；
+# 之前这里配合 2>/dev/null 导致凭据检查静默失效。
+HITS="$(grep -rInE -e "$SECRET_PATTERNS" "$DIR" --include='*.md' --include='*.json' --include='*.txt' 2>/dev/null \
+        | grep -viE -e 'TODO|待填|待补|xxx|<[^>]*>|\{\{|来源|placeholder|example' || true)"
 if [ -n "$HITS" ]; then
-  fail "疑似写入了凭据/密钥，必须移除（只保留"凭据来源"）:"
+  fail "疑似写入了凭据/密钥，必须移除（只保留\"凭据来源\"）:"
   printf '%s\n' "$HITS" | sed 's/^/      /' | head -20
 else
   ok "未发现明显的凭据/密钥"
 fi
 
-PII="$(grep -rInE '[0-9]{17}[0-9Xx]|1[3-9][0-9]{9}' "$DIR" --include='*.md' 2>/dev/null \
-        | grep -viE '示例|example|TODO|\{\{|xxxx' || true)"
+PII="$(grep -rInE -e '[0-9]{17}[0-9Xx]|1[3-9][0-9]{9}' "$DIR" --include='*.md' 2>/dev/null \
+        | grep -viE -e '示例|example|TODO|\{\{|xxxx' || true)"
 if [ -n "$PII" ]; then
   warn "疑似真实手机号/身份证号，请确认是否为占位示例:"
   printf '%s\n' "$PII" | sed 's/^/      /' | head -10
@@ -139,8 +145,8 @@ fi
 
 # ---------- 6. 硬编码具体值（泛化检查） ----------
 printf '\n[6] 泛化检查（可疑硬编码）\n'
-HARD="$(grep -rInE '\b(SO|PO|ORD|INV)[0-9]{6,}\b' "$DIR" --include='*.md' 2>/dev/null \
-        | grep -viE '示例|example|参数|占位|\{\{|\$\{' || true)"
+HARD="$(grep -rInE -e '\b(SO|PO|ORD|INV)[0-9]{6,}\b' "$DIR" --include='*.md' 2>/dev/null \
+        | grep -viE -e '示例|example|参数|占位|\{\{|\$\{' || true)"
 if [ -n "$HARD" ]; then
   warn "疑似把具体单号写死在技能里（应参数化为 \${...}）:"
   printf '%s\n' "$HARD" | sed 's/^/      /' | head -10

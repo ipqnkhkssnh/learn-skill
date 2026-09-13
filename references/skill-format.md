@@ -121,7 +121,7 @@ whenToUse: 需要在 ERP 中查询订单、查看订单详情、提交订单时�
   "updatedAt": "2026-09-13",
   "learnedBy": "learn-skill",
   "sourceRecordings": [
-    {"path": "/Users/me/Desktop/erp-order.mov", "durationSeconds": 128, "learnedAt": "2026-09-12"}
+    {"path": "~/Desktop/erp-order.mov", "durationSeconds": 128, "learnedAt": "2026-09-12"}
   ],
   "environment": {
     "type": "unknown",
@@ -160,7 +160,7 @@ whenToUse: 需要在 ERP 中查询订单、查看订单详情、提交订单时�
       "version": "0.2.0",
       "createdAt": "2026-09-12",
       "updatedAt": "2026-09-13",
-      "sourceRecordings": ["/Users/me/Desktop/erp-order.mov"],
+      "sourceRecordings": ["~/Desktop/erp-order.mov"],
       "unknownCount": 2,
       "lastUsedAt": "2026-09-14T10:21:00Z"
     }

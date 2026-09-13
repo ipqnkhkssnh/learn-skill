@@ -109,8 +109,10 @@ screenshot(scale=1.0) → 1 图片像素 = 1 屏幕坐标单位
 2. 尽量缩短占用；能只读就不要写。
 3. 结束后把鼠标移开关键区域，必要时用 `list_apps` 确认没有残留窗口。
 4. macOS 权限：需要给**运行 a2desk 的进程**（终端 / MCP 客户端本体）授"屏幕录制"+"辅助功能"；**授权后必须重启该进程**才生效（TCC 在进程内缓存判定）。
-5. 接入前可跑自检：`a2desk --selftest`；以及无副作用的输入冒烟 `python3 scripts/input-smoke.py`（会移动鼠标并精确还原，只按一下 Shift）。
+5. 接入前可跑自检：`a2desk --selftest`；以及无副作用的输入冒烟 `python3 <a2desk 仓库>/scripts/input-smoke.py`（会移动鼠标并精确还原，只按一下 Shift）。
 6. Linux 桌面需要 X11 且 `DISPLAY` 可用；Wayland 下截屏与输入模拟是"尽力而为"，失败就换通道。
+7. Windows：无需额外授权（DPI 已由 a2desk 统一为物理像素，多屏用 `SetCursorPos`）。唯一的坑是**权限不对等**——
+   若目标程序以管理员身份运行，普通权限的 a2desk 可能点不动它的窗口，此时用同样权限启动 a2desk 再操作。
 
 ---
 

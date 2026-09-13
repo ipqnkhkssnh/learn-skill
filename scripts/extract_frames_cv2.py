@@ -51,7 +51,17 @@ def main():
     ap.add_argument("--min-gap", type=float, default=30.0)
     ap.add_argument("--start", type=float, default=0.0)
     ap.add_argument("--end", type=float, default=0.0)
+    # 与 extract_frames.sh 的接口保持一致：OCR 只有 macOS swift 后端支持。
+    # 这里显式接受并忽略，避免旧调用方（或手写命令）传 --ocr 时 argparse 直接报错。
+    ap.add_argument("--ocr", default="off", choices=["on", "off"],
+                    help="本后端不支持 OCR；传 on 会提示后忽略")
     args = ap.parse_args()
+
+    if args.ocr == "on":
+        sys.stderr.write(
+            "extract_frames_cv2: 本后端（Python+OpenCV）不支持 OCR，--ocr on 已忽略。\n"
+            "  需要逐字文案：改到 macOS 用 swift 后端抽帧，或用 tesseract / paddleocr 单独识别 frames/*.jpg。\n"
+        )
 
     video = os.path.abspath(os.path.expanduser(args.video))
     outdir = os.path.abspath(os.path.expanduser(args.outdir))

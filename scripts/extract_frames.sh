@@ -18,6 +18,7 @@
 #   --end SEC          结束时间（默认到片尾）——配合 --interval 0.25 可对关键片段二次加密。
 #   --ocr on|off       用 macOS Vision 逐帧 OCR，把文字写进 manifest（默认 off）。
 #                      表格/小字/需要精确抄字段名时打开，是"看图"之外的第二路证据。
+#                      **仅 macOS（swift 后端）有效**；其他后端会明确提示后忽略。
 #   --backend auto|swift|ffmpeg|python   强制指定后端（默认 auto）。
 #   --base64           抽帧后自动调用 frames_to_base64.py 打包成 base64 批次。
 #   --batch-size N     --base64 时每批图片数（默认 20）。
@@ -30,6 +31,9 @@
 #
 # 后端优先级：macOS 用 Swift/AVFoundation（零依赖，顺带支持 OCR）；
 # 否则用 ffmpeg；再否则用 Python+OpenCV。三者产出的目录结构一致。
+#
+# 平台：macOS / Linux 用本脚本（bash）。Windows 没有 bash 时用同目录的
+#       extract_frames.ps1（纯 PowerShell，后端为 ffmpeg / OpenCV，无 OCR）。
 
 set -euo pipefail
 
@@ -68,7 +72,7 @@ while [ $# -gt 0 ]; do
     --min-gap)  MINGAP="$2";   FORWARD+=(--min-gap "$2");  shift 2;;
     --start)    START="$2";    FORWARD+=(--start "$2");    shift 2;;
     --end)      END="$2";      FORWARD+=(--end "$2");      shift 2;;
-    --ocr)      OCR="$2";      FORWARD+=(--ocr "$2");      shift 2;;
+    --ocr)      OCR="$2";      shift 2;;
     --backend)  BACKEND="$2";  shift 2;;
     --base64)   BASE64=1;      shift;;
     --batch-size) BATCH_SIZE="$2"; shift 2;;
@@ -81,6 +85,13 @@ done
 VIDEO="$(cd "$(dirname "$VIDEO")" && pwd)/$(basename "$VIDEO")"
 mkdir -p "$OUTDIR"
 OUTDIR="$(cd "$OUTDIR" && pwd)"
+
+# OCR 只有 swift 后端支持；其余后端明确提示后忽略，而不是静默丢弃或报错。
+warn_no_ocr() {
+  [ "$OCR" = "on" ] || return 0
+  info "提示：当前后端不支持 --ocr（OCR 仅 macOS Vision/swift 后端提供），已按 --ocr off 继续。"
+  info "      需要逐字文案时：改到 macOS 上抽帧，或抽完用外部 OCR（tesseract / paddleocr）单独识别 frames/*.jpg。"
+}
 
 # ---------- 构建目录（可写优先，退到临时目录） ----------
 pick_build_dir() {
@@ -108,12 +119,15 @@ swift_backend() {
     swiftc -parse-as-library -module-cache-path "$build/modulecache" "$src" -o "$bin" \
       >"$build/swiftc.log" 2>&1 || { info "Swift 后端编译失败，见 $build/swiftc.log"; return 1; }
   fi
-  "$bin" "$VIDEO" "$OUTDIR" "${FORWARD[@]+"${FORWARD[@]}"}"; return $?
+  local ocr_args=()
+  [ "$OCR" = "on" ] && ocr_args=(--ocr on)
+  "$bin" "$VIDEO" "$OUTDIR" "${FORWARD[@]+"${FORWARD[@]}"}" "${ocr_args[@]+"${ocr_args[@]}"}"; return $?
 }
 
 # ---------- 后端：ffmpeg ----------
 ffmpeg_backend() {
   command -v ffmpeg >/dev/null 2>&1 || return 1
+  warn_no_ocr
   local frames="$OUTDIR/frames"
   rm -rf "$frames"; mkdir -p "$frames"
   local fps; fps="$(awk -v i="$INTERVAL" 'BEGIN{printf "%.6f", 1/i}')"
@@ -143,6 +157,7 @@ python_backend() {
   command -v python3 >/dev/null 2>&1 || return 1
   [ -f "$SCRIPT_DIR/extract_frames_cv2.py" ] || return 1
   python3 -c "import cv2" >/dev/null 2>&1 || return 1
+  warn_no_ocr
   python3 "$SCRIPT_DIR/extract_frames_cv2.py" "$VIDEO" "$OUTDIR" "${FORWARD[@]+"${FORWARD[@]}"}"
 }
 
@@ -157,7 +172,8 @@ case "$BACKEND" in
     elif ffmpeg_backend; then RC=0
     elif python_backend; then RC=0
     else
-      die "没有可用后端。请安装其一：macOS 装 Xcode Command Line Tools（提供 swiftc）/ 安装 ffmpeg / pip install opencv-python"
+      die "没有可用后端。请安装其一：macOS 装 Xcode Command Line Tools（提供 swiftc）/ 安装 ffmpeg / pip install opencv-python
+  Windows：请改用 extract_frames.ps1（无需 bash），并安装 ffmpeg（winget install Gyan.FFmpeg）或 python -m pip install opencv-python"
     fi
     ;;
   *) die "未知 --backend: $BACKEND";;

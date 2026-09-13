@@ -62,6 +62,12 @@ bash scripts/extract_frames.sh "$VIDEO" "$OUT-zoom" --start 62 --end 78 --interv
 
 `--ocr on` 会用 macOS Vision 逐帧识别文字，写进 `manifest.json` 的 `ocr` 字段，并在 `index.md` 里生成"帧 → 文字"的对照表。
 
+> **平台限制**：OCR 只有 **macOS 的 swift 后端**提供。Linux / Windows 上：
+> `extract_frames.sh` 走 ffmpeg 或 OpenCV 后端时会打印"已按 --ocr off 继续"，
+> `extract_frames.ps1` 同样只提示不执行（不会报错，也不会静默丢弃）。
+> 这些平台上要做逐字识别，抽完帧后单独跑外部 OCR：
+> `tesseract frames/frame_00001.jpg stdout -l chi_sim+eng`（或 paddleocr），再把结果与图片交叉验证。
+
 **OCR 不是必需的。** 默认 `--ocr off`，主链路（JPEG → base64 → 多模态模型看图）完全不依赖它；ffmpeg / OpenCV 后端也没有 OCR。它补的是"看图"这条路的两个短板：**分辨率**（小字被缩放后糊掉）和**逐字精确**（模型可能把形近字读错）。
 
 ### 4.1 不开 OCR 会遇到什么
@@ -107,6 +113,12 @@ bash scripts/extract_frames.sh "$VIDEO" "$OUT-zoom" --start 62 --end 78 --interv
 ```bash
 # 路径 A：整条链路一步到位（抽帧 + 打包）
 bash scripts/extract_frames.sh "$VIDEO" "$OUT" --interval 1 --max 300 --base64 --batch-size 20
+
+# Windows（PowerShell，选项同名）
+pwsh -File scripts/extract_frames.ps1 "$VIDEO" "$OUT" --interval 1 --max 300 --base64 --batch-size 20
+
+# 路径 B：只打包（跨平台，纯 Python）
+python3 scripts/frames_to_base64.py "$OUT" --batch-size 20
 ```
 
 ### 5.2 批次产物长什么样

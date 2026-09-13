@@ -6,8 +6,9 @@
 #
 # 说明：
 #   * skill-name 必须是小写 kebab-case ASCII（如 erp-order-management），中文只放在 --title。
-#   * 默认写到 ~/.agent/skills/（DSH 扫描的用户技能根，等价于 ~/.agents/skills）。
+#   * 默认写到 ~/.agents/skills/（DSH 实际扫描的用户技能根；~/.agent/skills 是它的 POSIX 别名）。
 #   * 已存在同名技能时默认拒绝，除非 --force。
+#   * Windows（无 bash）请用同目录的 init_skill.ps1。
 
 set -euo pipefail
 
@@ -21,12 +22,15 @@ usage() {
   sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
-# 技能根目录：~/.agent/skills 优先（用户可见路径），其次 ~/.agents/skills（DSH 扫描根）。
+# 技能根目录：DSH 实际扫描的是 $DSH_AGENTS_HOME/skills（默认 ~/.agents/skills）。
+# ~/.agent 只是 POSIX 上的符号链接别名（Windows 上通常不存在），所以优先用规范路径，
+# 避免在没有别名的机器（尤其 Windows）上把技能写进 DSH 扫不到的目录。
 resolve_skills_root() {
   if [ -n "${LEARN_SKILLS_ROOT:-}" ]; then printf '%s' "$LEARN_SKILLS_ROOT"; return; fi
-  if [ -d "$HOME/.agent/skills" ]; then printf '%s' "$HOME/.agent/skills"; return; fi
+  if [ -n "${DSH_AGENTS_HOME:-}" ]; then printf '%s' "$DSH_AGENTS_HOME/skills"; return; fi
   if [ -d "$HOME/.agents/skills" ]; then printf '%s' "$HOME/.agents/skills"; return; fi
-  printf '%s' "$HOME/.agent/skills"
+  if [ -d "$HOME/.agent/skills" ]; then printf '%s' "$HOME/.agent/skills"; return; fi
+  printf '%s' "$HOME/.agents/skills"
 }
 
 SKILL_NAME=""; BASE_DIR=""; SYSTEM=""; TITLE=""; FORCE=0
@@ -61,7 +65,8 @@ mkdir -p "$BASE_DIR" 2>/dev/null || true
 if ! ( : > "$BASE_DIR/.write-test" ) 2>/dev/null; then
   die "技能根目录不可写：$BASE_DIR
   · 当前沙箱可能只允许写工作区（workspace-write）。请对这一步申请更宽的文件权限，或改用 --base-dir <可写目录>。
-  · 若 $HOME/.agent 不存在，可先建立别名：ln -s \"$HOME/.agents\" \"$HOME/.agent\""
+  · 也可以直接指定：LEARN_SKILLS_ROOT=<可写目录> bash init_skill.sh ...
+  · POSIX 上若 $HOME/.agent 不存在，可建立别名：ln -s \"$HOME/.agents\" \"$HOME/.agent\"（Windows 请用 init_skill.ps1，不要建符号链接）"
 fi
 rm -f "$BASE_DIR/.write-test"
 
