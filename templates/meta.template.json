@@ -23,6 +23,10 @@
     "preferred": "remote-a2desk",
     "fallback": ["local-a2desk", "playwright"]
   },
+  "systems": ["{{SYSTEM}}"],
+  "envClass": "unknown",
+  "capabilities": [],
+  "secretsRef": [],
   "unknowns": [],
   "usageCount": 0,
   "lastUsedAt": null
