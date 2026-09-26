@@ -90,6 +90,21 @@ render "$TEMPLATE_DIR/meta.template.json"  "$DEST/state/meta.json"
 render "$TEMPLATE_DIR/CHANGELOG.template.md" "$DEST/CHANGELOG.md"
 cp "$TEMPLATE_DIR/page.template.md" "$DEST/pages/README.md"
 cp "$TEMPLATE_DIR/task.template.md" "$DEST/tasks/README.md"
+# job-runner 要用的两个机器可读接口：能力卡 + 语义定位器集
+[ -f "$TEMPLATE_DIR/capability.template.json" ] \
+  && cp "$TEMPLATE_DIR/capability.template.json" "$DEST/tasks/_capability.example.json"
+[ -f "$TEMPLATE_DIR/selectors.template.json" ] \
+  && cp "$TEMPLATE_DIR/selectors.template.json" "$DEST/pages/selectors.example.json"
+# 真正的选择器集先落一个空骨架（有文件才会被想起来填）
+cat > "$DEST/pages/selectors.json" <<SELECTORS
+{
+  "_doc": "语义定位器集：把界面定位沉淀成可执行的选择器，给 job-runner 的 skill 步骤用。格式参考同目录 selectors.example.json；禁止用裸坐标（铁律 11）。",
+  "version": "0.1.0",
+  "updatedAt": "{{DATE}}",
+  "pages": {}
+}
+SELECTORS
+sed -i.bak "s|{{DATE}}|$TODAY|g" "$DEST/pages/selectors.json" && rm -f "$DEST/pages/selectors.json.bak"
 
 info "已创建技能骨架：$DEST"
 cat >&2 <<EOF
@@ -97,7 +112,12 @@ cat >&2 <<EOF
 下一步（learn-skill 模式 A 的 Step 5）：
   1. 先读 pages/README.md 与 tasks/README.md 了解格式，然后**删掉**它们（或保留作模板）；
   2. 把归纳结果写进 SKILL.md（入口/前置条件/能力清单/索引）、pages/*.md、tasks/*.md；
-  3. 更新 state/meta.json（coverage、unknowns、sourceRecordings）与 CHANGELOG.md；
-  4. 自检：bash "$SCRIPT_DIR/validate_skill.sh" "$DEST"
+  3. **每个任务再写一张能力卡**：复制 tasks/_capability.example.json 为 tasks/<任务名>.json
+     （字段契约见 job-runner/references/job-format.md §5）——没有卡，job-runner 无法调用这个任务；
+  4. **界面定位沉淀到 pages/selectors.json**：参考 pages/selectors.example.json；
+     禁止拿裸坐标当知识（只有自绘/Canvas 界面才记坐标并注明分辨率）；
+  5. 更新 state/meta.json（coverage、unknowns、systems、envClass、capabilities、secretsRef、
+     sourceRecordings）与 CHANGELOG.md；
+  6. 自检：bash "$SCRIPT_DIR/validate_skill.sh" "$DEST"
 EOF
 printf '%s\n' "$DEST"

@@ -154,6 +154,25 @@ else
   ok "未发现明显的硬编码单号"
 fi
 
+# ---------- 7. 能力卡 / 语义定位器集（job-runner 的调用接口） ----------
+printf '\n[7] 能力卡 / 选择器集（给 job-runner 的接口）\n'
+CHECK_CARDS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check_cards.py"
+if command -v python3 >/dev/null 2>&1 && [ -f "$CHECK_CARDS" ]; then
+  CARD_OUT="$(python3 "$CHECK_CARDS" "$DIR" 2>&1)"
+  while IFS= read -r _line; do
+    case "$_line" in
+      ERR\ *)  fail "${_line#ERR }";;
+      WARN\ *) warn "${_line#WARN }";;
+      OK\ *)   ok   "${_line#OK }";;
+      INFO\ *) printf '  · %s\n' "${_line#INFO }";;
+      '') ;;
+      *)       printf '  %s\n' "$_line";;
+    esac
+  done <<< "$CARD_OUT"
+else
+  warn "没有 python3（或缺少 check_cards.py），跳过能力卡/选择器集校验"
+fi
+
 # ---------- 汇总 ----------
 printf '\n────────────────────────────\n'
 if [ "$ERRORS" -gt 0 ]; then

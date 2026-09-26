@@ -44,11 +44,13 @@ DSH 扫描技能根目录，**只认一层深度**：
 ```
 ~/.agent/skills/<skill-name>/
 ├── SKILL.md              # 入口：frontmatter + 系统入口 + 前置条件 + 能力清单 + 索引
-├── pages/                # 页面知识，每页一个 .md
+├── pages/                # 页面知识，每页一个 .md（给人/模型读）
 │   ├── order-list.md
-│   └── order-detail.md
-├── tasks/                # 任务配方，每个任务一个 .md
-│   ├── query-orders.md
+│   ├── order-detail.md
+│   └── selectors.json    # ★ 语义定位器集（给 job-runner 读，替代裸坐标）
+├── tasks/                # 任务配方，每个任务成对出现
+│   ├── query-orders.md         # 人/模型读：为什么这么做、失败怎么办
+│   ├── query-orders.json       # ★ 能力卡：入参/产物/通道/副作用/判据/自动化边界
 │   └── view-order-detail.md
 ├── state/
 │   └── meta.json         # 机器可读元数据：版本/来源/覆盖度/unknowns/使用统计
@@ -57,11 +59,16 @@ DSH 扫描技能根目录，**只认一层深度**：
 └── CHANGELOG.md          # 每次补学/修正追加一条
 ```
 
+标 ★ 的两个是**给编排侧（job-runner）的接口**：没有它们，学到的东西只能靠模型临场阅读，
+没法被稳定地重复调用。
+
 | 文件 | 职责 | 写作要点 |
 |---|---|---|
 | `SKILL.md` | 让人/模型**30 秒内知道这个技能能不能用、怎么开始** | 前置条件单独成节；能力清单标状态；索引指到具体文件 |
 | `pages/*.md` | 回答"这个系统里有什么、每个页面能做什么" | 语义定位、字段/列/按钮、状态与反馈、副作用 |
 | `tasks/*.md` | 回答"为了做成某件事，按什么顺序、带什么参数、看到什么算成功" | 参数化、每步预期反馈、失败分支、成功判据 |
+| `tasks/*.json` | **能力卡**：让编排器能程序化调用这个任务 | 契约见 §4.1；`outputs.path` 必须是 run 目录内相对路径 |
+| `pages/selectors.json` | 让编排器能稳定定位界面元素 | 只写语义定位（菜单/按钮文字/标签/等待条件）；坐标仅在无语义界面下用且注明分辨率 |
 | `state/meta.json` | 让工具与后续会话能程序化判断 | 版本、来源录屏、覆盖度、unknowns、使用统计 |
 | `assets/` | 证据 | 只放能说明知识的关键图，别把整个抽帧目录搬进来 |
 | `CHANGELOG.md` | 追溯"什么时候因为什么改了技能" | 倒序，最新在上；每条带证据与遗留问题 |
@@ -110,6 +117,37 @@ whenToUse: 需要在 ERP 中查询订单、查看订单详情、提交订单时�
 
 ---
 
+### 4.1 能力卡（`tasks/<task>.json`）与选择器集（`pages/selectors.json`）
+
+**为什么要这两样**：`tasks/<task>.md` 是写给人看的故事，读起来清楚但没法被程序稳定调用。
+编排侧（`job-runner`）需要的是一张**合同**：这个任务要什么入参、会产出什么、是不是写操作、
+哪一步必须人来、怎么判断它做对了。所以每个任务都要有一张能力卡。
+
+能力卡骨架用 `templates/capability.template.json`（`init_skill.sh` 会放成
+`tasks/_capability.example.json`）。字段含义与硬性要求见 `job-runner/references/job-format.md` §5，
+这里只强调写作纪律：
+
+| 字段 | 纪律 |
+|---|---|
+| `version` | 与本技能 `state/meta.json` 的 `version` 保持一致（补学后一起改） |
+| `inputs[].name` | 必须与 `tasks/<task>.md` 的「参数」表一一对应，名字不许两样 |
+| `outputs[].path` | **必须是 run 目录内的相对路径**（如 `artifacts/orders/*.csv`），不许绝对路径或 `..` |
+| `effects` | 按最坏情况写：会改业务状态就是 `write`，会发给客户就是 `outbound` |
+| `automationBoundary.needsHuman` | 验证码/短信/审批这类必须人的步骤，一条都别漏 |
+| `verify` | 用数据层判据（键唯一/行数守恒/合计相等），不要写"看到提示条" |
+| `secretsRef` | 只写 `ref:xxx`，**永远不写凭据值** |
+| `selectors` | 语义定位；与 `pages/selectors.json` 对应页面的条目保持一致 |
+
+选择器集用 `templates/selectors.template.json`（放成 `pages/selectors.example.json`）。
+规矩：`by` 用语义类型（`menu`/`button`/`label`/`row-action`…）而不是坐标；
+每条定位器标 `confidence`（`observed` 录屏确证 / `inferred` 推断 / `unknown` 没见过）；
+找不到时怎么办写在 `fallbacks` 里。
+
+判断标准很简单：**换一台机器、换一个分辨率、换一个人来点，这份知识还能用吗？**
+不能用的部分（坐标、绝对路径、具体单号）就是不该出现在技能里的东西。
+
+---
+
 ## 5. `state/meta.json` 字段
 
 ```json
@@ -133,6 +171,13 @@ whenToUse: 需要在 ERP 中查询订单、查看订单详情、提交订单时�
   },
   "coverage": {"pages": 2, "tasks": 2, "verifiedTasks": 2},
   "channels": {"preferred": "remote-a2desk", "fallback": ["local-a2desk", "playwright"]},
+  "systems": ["ERP", "第三方物流平台"],
+  "envClass": "test",
+  "capabilities": [
+    {"task": "query-orders", "card": "tasks/query-orders.json", "effects": "read", "verified": true},
+    {"task": "submit-order", "card": "tasks/submit-order.json", "effects": "write", "verified": false}
+  ],
+  "secretsRef": ["ref:erp-account"],
   "unknowns": [
     {"item": "提交订单流程", "reason": "仅见按钮未点击", "status": "needs-exploration"},
     {"item": "系统入口 URL", "reason": "录屏起始已登录", "status": "needs-user-input"}
@@ -141,6 +186,15 @@ whenToUse: 需要在 ERP 中查询订单、查看订单详情、提交订单时�
   "lastUsedAt": "2026-09-14T10:21:00Z"
 }
 ```
+
+新增字段说明：
+
+| 字段 | 用途 |
+|---|---|
+| `systems[]` | 一个技能可能横跨多个系统（例：ERP + 第三方平台），编排侧要据此判断前置条件 |
+| `envClass` | `test` / `prod` / `any`：写操作前判断这是哪个环境 |
+| `capabilities[]` | 能力索引：任务名 → 卡片路径 → 副作用 → 是否验证过；编排侧据此快速回答「能不能自动做」 |
+| `secretsRef[]` | 凭据**引用**清单（只有名字，永远没有值） |
 
 `unknowns[].status` 取值：`needs-exploration`（需要真机点一遍）/ `needs-user-input`（要问用户）/ `blocked`（当前环境做不到）。
 **补学完成后必须从 `unknowns` 里移除对应条目**，否则下次还会被当成未知。
@@ -240,9 +294,11 @@ CHANGELOG 每条（倒序，最新在上）：
 | 文件 | 改什么 |
 |---|---|
 | `tasks/<new>.md` | 新增任务配方（参数化、每步预期反馈、成功判据、副作用、异常分支） |
+| `tasks/<new>.json` | **同步产出/更新能力卡**（入参、产物、effects、automationBoundary、verify）；改了 md 不改卡 = 编排侧还在用旧知识 |
 | `pages/*.md` | 补充/修正页面结构：新按钮的行为、前置条件、禁用规则 |
+| `pages/selectors.json` | 补充/纠正语义定位器（新按钮文字、改名后的标签、新的等待条件） |
 | `SKILL.md` | 能力清单状态更新（⚠️ → 🟡/✅）、任务索引加一行、unknowns 划掉 |
-| `state/meta.json` | `version` +0.1、`updatedAt`、`coverage`、从 `unknowns` 移除已验证项、`usageCount`/`lastUsedAt` |
+| `state/meta.json` | `version` +0.1、`updatedAt`、`coverage`、`capabilities[]`（新增/改状态）、从 `unknowns` 移除已验证项、`usageCount`/`lastUsedAt` |
 | `CHANGELOG.md` | 追加一条（按 §7 模板） |
 | `state/registry.json`（learn-skill 的） | 更新对应条目 |
 | `assets/` / evidence | 存关键证据图 |

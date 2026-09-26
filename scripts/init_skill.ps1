@@ -141,6 +141,25 @@ Render-Template -Template (Join-Path $TemplateDir 'CHANGELOG.template.md') -Dest
 Copy-Item -LiteralPath (Join-Path $TemplateDir 'page.template.md') -Destination (Join-Path (Join-Path $Dest 'pages') 'README.md') -Force
 Copy-Item -LiteralPath (Join-Path $TemplateDir 'task.template.md') -Destination (Join-Path (Join-Path $Dest 'tasks') 'README.md') -Force
 
+# job-runner 要用的两个机器可读接口：能力卡模板 + 语义定位器集
+$capTpl = Join-Path $TemplateDir 'capability.template.json'
+if (Test-Path -LiteralPath $capTpl) {
+  Copy-Item -LiteralPath $capTpl -Destination (Join-Path (Join-Path $Dest 'tasks') '_capability.example.json') -Force
+}
+$selTpl = Join-Path $TemplateDir 'selectors.template.json'
+if (Test-Path -LiteralPath $selTpl) {
+  Copy-Item -LiteralPath $selTpl -Destination (Join-Path (Join-Path $Dest 'pages') 'selectors.example.json') -Force
+}
+$selJson = @'
+{
+  "_doc": "语义定位器集：把界面定位沉淀成可执行的选择器，给 job-runner 的 skill 步骤用。格式参考同目录 selectors.example.json；禁止用裸坐标（铁律 11）。",
+  "version": "0.1.0",
+  "updatedAt": "__DATE__",
+  "pages": {}
+}
+'@
+[System.IO.File]::WriteAllText((Join-Path (Join-Path $Dest 'pages') 'selectors.json'), $selJson.Replace('__DATE__', $Today), $Utf8NoBom)
+
 Info "已创建技能骨架：$Dest"
 $validateScript = Join-Path $ScriptDir 'validate_skill.ps1'
 @"
@@ -148,8 +167,13 @@ $validateScript = Join-Path $ScriptDir 'validate_skill.ps1'
 下一步（learn-skill 模式 A 的 Step 5）：
   1. 先读 pages\README.md 与 tasks\README.md 了解格式，然后**删掉**它们（或保留作模板）；
   2. 把归纳结果写进 SKILL.md（入口/前置条件/能力清单/索引）、pages\*.md、tasks\*.md；
-  3. 更新 state\meta.json（coverage、unknowns、sourceRecordings）与 CHANGELOG.md；
-  4. 自检：pwsh -File "$validateScript" "$Dest"
+  3. **每个任务再写一张能力卡**：复制 tasks\_capability.example.json 为 tasks\<任务名>.json
+     （字段契约见 job-runner/references/job-format.md §5）——没有卡，job-runner 无法调用这个任务；
+  4. **界面定位沉淀到 pages\selectors.json**：参考 pages\selectors.example.json；
+     禁止拿裸坐标当知识（只有自绘/Canvas 界面才记坐标并注明分辨率）；
+  5. 更新 state\meta.json（coverage、unknowns、systems、envClass、capabilities、secretsRef、
+     sourceRecordings）与 CHANGELOG.md；
+  6. 自检：pwsh -File "$validateScript" "$Dest"
 "@ | ForEach-Object { [Console]::Error.WriteLine($_) }
 
 Write-Output $Dest

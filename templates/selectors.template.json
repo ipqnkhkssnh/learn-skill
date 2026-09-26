@@ -1,0 +1,36 @@
+{
+  "_doc": "页面选择器集：pages/selectors.json。每个页面一段，把「语义定位」沉淀成可执行的选择器，供 job-runner 的 skill 步骤稳定定位——替代裸坐标（learn-skill §5 红线）。录屏看不清或没验证过的定位器，标 confidence: inferred / unknown，不要编。",
+
+  "version": "0.1.0",
+  "updatedAt": "YYYY-MM-DD",
+
+  "pages": {
+    "<page-id，与 pages/<page-id>.md 同名>": {
+      "identify": {
+        "titleContains": "页面标题子串（判断「现在是不是这个页面」）",
+        "urlContains": "URL 片段（浏览器场景）",
+        "breadcrumb": ["模块", "子模块"]
+      },
+      "entries": [
+        { "step": 1, "by": "menu", "text": "左侧菜单项文字" },
+        { "step": 2, "by": "tab", "text": "页签文字" },
+        { "step": 3, "by": "button", "text": "按钮文字", "action": "click" },
+        { "step": 4, "by": "label", "text": "字段标签", "action": "type", "param": "${inputs.xxx}" },
+        { "step": 5, "by": "row-action", "rowKey": "${item}", "text": "行内操作文字" }
+      ],
+      "waits": [
+        { "after": 3, "for": "结果表出现且行数 ≥ 1", "timeoutMs": 8000 }
+      ],
+      "fallbacks": [
+        { "when": "菜单项找不到", "do": "改用顶部搜索框搜模块名，或 URL 直达" }
+      ],
+      "confidence": "observed",
+      "evidence": { "frames": "f018-f024" },
+      "unknowns": ["界面上有但没点过的入口"]
+    }
+  },
+
+  "_by_取值": ["menu", "tab", "button", "link", "label", "input", "select", "checkbox", "row-action", "context-menu", "dialog", "toast"],
+  "_action_取值": ["click", "type", "select", "check", "hover", "read", "submit"],
+  "_confidence_取值": ["observed（录屏/实测确证）", "inferred（推断）", "unknown（没看到）"]
+}

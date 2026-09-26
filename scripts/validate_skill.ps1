@@ -36,6 +36,7 @@ function Show-Usage {
 
 $script:Errors = 0
 $script:Warnings = 0
+$ScriptDir = Split-Path -Parent $PSCommandPath
 function Fail { param([string]$m) Write-Host ('  [x] ' + $m); $script:Errors++ }
 function Warn { param([string]$m) Write-Host ('  [!] ' + $m); $script:Warnings++ }
 function Ok   { param([string]$m) Write-Host ('  [ok] ' + $m) }
@@ -246,6 +247,26 @@ if ($hard.Count -gt 0) {
   $hard | Select-Object -First 10 | ForEach-Object { Write-Host ('      ' + $_) }
 } else {
   Ok '未发现明显的硬编码单号'
+}
+
+# ---------- 7. 能力卡 / 语义定位器集（job-runner 的调用接口） ----------
+Write-Host ''
+Write-Host '[7] 能力卡 / 选择器集（给 job-runner 的接口）'
+$CheckCards = Join-Path $ScriptDir 'check_cards.py'
+$py = Get-Command python3 -ErrorAction SilentlyContinue
+if (-not $py) { $py = Get-Command python -ErrorAction SilentlyContinue }
+if ($py -and (Test-Path -LiteralPath $CheckCards)) {
+  $out = & $py.Source $CheckCards $Dir 2>&1
+  foreach ($line in $out) {
+    $text = [string]$line
+    if ($text.StartsWith('ERR '))        { Fail $text.Substring(4) }
+    elseif ($text.StartsWith('WARN '))   { Warn $text.Substring(5) }
+    elseif ($text.StartsWith('OK '))     { Ok   $text.Substring(3) }
+    elseif ($text.StartsWith('INFO '))   { Write-Host ('  · ' + $text.Substring(5)) }
+    elseif ($text.Trim() -ne '')         { Write-Host ('  ' + $text) }
+  }
+} else {
+  Warn '没有 python3/python（或缺少 check_cards.py），跳过能力卡/选择器集校验'
 }
 
 # ---------- 汇总 ----------

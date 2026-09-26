@@ -1,7 +1,7 @@
 ---
 name: learn-skill
-description: 学习技能——把用户提供的录屏/操作视频抽帧后交给视觉模型逐帧学习，理解"前置条件是什么、每一步的目的是什么"，并把一次具体操作泛化成可复用的系统/页面/任务知识，落成新的 skill 存到 ~/.agent/skills；之后执行该技能时遇到没学过的分支（例如只录过查询订单、这次要提交订单），可以边操作边补学、自动回写优化该技能。触发词：学习技能、学一下这个录屏、从录屏里学、看录屏学操作、抽帧学习、录屏教学、把这个操作变成技能、生成技能、技能补学、更新技能、优化技能、learn from recording、skill from video。
-whenToUse: 用户给出录屏/视频/截图序列并要求"学会"其中操作；或要求把一套手工流程固化成技能；或正在执行某个已学技能、当前需求超出技能已有内容，需要边做边补学并回写。
+description: 学习技能——把用户提供的录屏/操作视频抽帧后交给视觉模型逐帧学习，理解"前置条件是什么、每一步的目的是什么"，并把一次具体操作泛化成可复用的系统/页面/任务知识，落成新的 skill 存到 ~/.agent/skills；每个任务除了人读的配方还要产出机器读的**能力卡**（tasks/<task>.json）与**语义定位器集**（pages/selectors.json），供 job-runner 编排调用；之后执行该技能时遇到没学过的分支（例如只录过查询订单、这次要提交订单），或收到编排侧交来的缺口/补学单（gaps-brief.md），都可以边操作边补学、自动回写优化该技能。触发词：学习技能、学一下这个录屏、从录屏里学、看录屏学操作、抽帧学习、录屏教学、把这个操作变成技能、生成技能、技能补学、更新技能、优化技能、能力卡、补学单、缺口回写、learn from recording、skill from video。
+whenToUse: 用户给出录屏/视频/截图序列并要求"学会"其中操作；或要求把一套手工流程固化成技能；或正在执行某个已学技能、当前需求超出技能已有内容，需要边做边补学并回写；或 job-runner 交来了 knowledge 类缺口（gaps.json / gaps-brief.md）需要补学并产出能力卡。
 ---
 
 # 学习技能 · learn-skill
@@ -53,6 +53,14 @@ whenToUse: 用户给出录屏/视频/截图序列并要求"学会"其中操作�
 7. **先只读后写入**，写操作前先确认环境是测试还是生产。
 8. **一步一验证**：在操作通道上每做一步先截图确认，再走下一步。禁止盲连击。
 9. **技能包保持干净**：抽帧缓存、原始录屏不放技能包内，放 `~/.agent/skills/.learn-cache/` 或临时目录。
+10. **知识要能被调用**：每个任务除了人读的 `tasks/<task>.md`，**必须同步产出机器读的
+    `tasks/<task>.json`（能力卡）**——它是 job-runner 编排调用这个任务的唯一接口。
+    卡与 md 冲突时以实测为准，两边一起改，不许两套说法并存。
+11. **定位靠语义，并且要沉淀**：界面定位统一写进 `pages/selectors.json`
+    （菜单名/按钮文字/字段标签/等待条件），**禁止把裸坐标当知识**；
+    只有确实无语义的界面（自绘/Canvas/游戏类）才记坐标，并注明分辨率。
+12. **自动化边界要写清**：卡片里必须有 `automationBoundary`——哪一步需要人（验证码、短信确认、
+    审批），哪些步骤允许自动做。不写清楚，编排侧就只能靠猜。
 
 ## 2. 模式 A 标准流程
 
@@ -147,6 +155,25 @@ bash "$SKILL_DIR/scripts/init_skill.sh" erp-order-management \
 
 生成到 `~/.agent/skills/erp-order-management/`，目录与字段规范见 `references/skill-format.md`。然后把 Step 3/4 的结论填进 `SKILL.md`、`pages/*.md`、`tasks/*.md`、`meta.json`。
 
+**每个任务要写两份**（`init_skill.sh` 已把模板放进 `tasks/` 与 `pages/`）：
+
+```bash
+# 1) 人读的配方（照 templates/task.template.md）
+$EDITOR ~/.agent/skills/<skill>/tasks/query-orders.md
+# 2) 机器读的能力卡（照 tasks/_capability.example.json）——少了它，job-runner 无法调用这个任务
+$EDITOR ~/.agent/skills/<skill>/tasks/query-orders.json
+# 3) 界面定位统一沉淀到这里（照 pages/selectors.example.json）
+$EDITOR ~/.agent/skills/<skill>/pages/selectors.json
+```
+
+自检（写完立刻跑，卡与 md 不一致会被拦下来）：
+
+```bash
+bash "$SKILL_DIR/scripts/validate_skill.sh" ~/.agent/skills/erp-order-management
+# 装了 job-runner 时，再让编排侧复核一次卡片契约：
+python3 ~/.agent/skills/job-runner/scripts/jobctl.py card erp-order-management/query-orders
+```
+
 **技能名必须是小写 kebab-case ASCII**（如 `erp-order-management`），中文只出现在标题和正文里。
 
 ### Step 6 · 自检 + 汇报
@@ -160,6 +187,9 @@ bash "$SKILL_DIR/scripts/validate_skill.sh" ~/.agent/skills/erp-order-management
 - [ ] 前置条件独立成节，且说清了"录屏前就已成立"的那部分
 - [ ] 每个任务都参数化，没有硬编码具体值
 - [ ] 每条界面描述都有帧序号或实测证据支撑
+- [ ] **每个任务都有同名能力卡 `tasks/<task>.json`**，且 `outputs` 是 run 目录内的相对路径
+- [ ] **卡片写了 `effects`、`automationBoundary`（哪步要人）、`verify`**
+- [ ] **界面定位写进了 `pages/selectors.json`**，没有拿裸坐标当知识
 - [ ] `meta.json` 的 `unknowns` 如实列出（尤其界面上看到但没操作过的功能）
 - [ ] 无凭据、无真实客户数据
 - [ ] 技能名 kebab-case，frontmatter 有 `name` + `description`
@@ -192,11 +222,21 @@ bash "$SKILL_DIR/scripts/validate_skill.sh" ~/.agent/skills/erp-order-management
 ~/.agent/skills/<skill-name>/
 ├── SKILL.md          # frontmatter(name/description/whenToUse) + 系统入口 + 前置条件 + 能力清单 + 任务索引
 ├── pages/            # 页面知识：每页一个文件，写"有什么、能做什么、怎么到达"
+│   └── selectors.json       # 语义定位器集（给 job-runner 的 skill 步骤用，替代坐标）
 ├── tasks/            # 任务配方：每个任务一个文件，参数化步骤 + 验证点 + 异常分支
+│   └── <task>.json          # 同一任务的**能力卡**（机器读，job-runner 的调用接口）
 ├── state/meta.json   # 机器可读元数据：版本、来源录屏、覆盖度、unknowns、使用统计
 ├── assets/           # 关键截图证据（可选，压缩过）
 └── CHANGELOG.md      # 每次补学/修正都追加一条
 ```
+
+**md 与 json 的分工**（别搞混）：
+
+| 文件 | 谁读 | 作用 |
+|---|---|---|
+| `pages/<page>.md`、`tasks/<task>.md` | 模型 / 人 | 讲清「有什么、为什么这么做、失败怎么办」 |
+| `pages/selectors.json` | job-runner | 讲清「点哪里、等什么」，可执行、可复用 |
+| `tasks/<task>.json` | job-runner | 任务卡：入参/产物/通道/副作用/判据/自动化边界 |
 
 完整规范、模板、合并/回写算法见 `references/skill-format.md`。
 
@@ -230,7 +270,9 @@ bash "$SKILL_DIR/scripts/validate_skill.sh" ~/.agent/skills/erp-order-management
 
 - 执行技能时发现目标功能在技能里只有入口、没有步骤（例：录屏只学过"查订单"，这次要"提交订单"）；
 - 实际界面与技能描述不符（字段名变了、按钮位置变了、多了新按钮）；
-- 用户提出了技能没覆盖的新参数/新场景（新查询条件、批量导出、审批流）。
+- 用户提出了技能没覆盖的新参数/新场景（新查询条件、批量导出、审批流）；
+- **`job-runner` 交来了缺口**：`~/.agents/jobs/runs/<run-id>/gaps-brief.md` 或 `gaps.json`
+  里有 `kind: "knowledge"` 的条目（例如某步骤"能力卡不存在"，或界面与卡不符）。
 
 **流程：**
 
@@ -242,8 +284,11 @@ bash "$SKILL_DIR/scripts/validate_skill.sh" ~/.agent/skills/erp-order-management
    - 系统反馈（成功提示、状态变化、跳转目标）；
    - 该操作的**前置条件**（权限、数据状态）与**副作用**（库存/状态/下游单据变化）。
 4. **一键回写**：操作跑通后**立即**（不要等下一个任务）更新技能包：
-   - `tasks/` 新增或修正任务配方（参数化）；
-   - `pages/` 补充新发现的页面/区域/按钮；
+   - `tasks/<task>.md` 新增或修正任务配方（参数化）；
+   - **`tasks/<task>.json` 同步更新能力卡**（入参/产物/effects/automationBoundary/verify）——
+     这是给 `job-runner` 的接口，改了 md 不改卡 = 编排侧还在用旧知识；
+   - `pages/*.md` 补充新发现的页面/区域/按钮；
+   - **`pages/selectors.json` 补充/纠正语义定位器**（新按钮文字、变化的标签、等待条件）；
    - `SKILL.md` 更新能力清单与任务索引；
    - `state/meta.json`：`version` +0.1、`updatedAt`、从 `unknowns` 移除已验证项、`usageCount`/`lastUsedAt`；
    - `CHANGELOG.md` 追加一条：日期 / 触发场景 / 新增或纠正了什么 / 证据（截图文件名）/ 仍未解决什么；
@@ -253,6 +298,41 @@ bash "$SKILL_DIR/scripts/validate_skill.sh" ~/.agent/skills/erp-order-management
 7. **校验**：`validate_skill.sh` 跑一遍；把 "补学了什么、还差什么" 汇报给用户。
 
 **并行安全**：同一技能可能被并行使用——回写前重读文件，只做增量合并，不要整文件覆盖。
+
+---
+
+## 8. 与 job-runner 的配合（知识怎么被真正用起来）
+
+本技能产出的是**知识**，不负责把事做完。真正把「一件事」跨系统、批量、带判据地跑完，
+是 `job-runner` 的职责。两者的接口只有两样：
+
+| 方向 | 交接物 | 位置 |
+|---|---|---|
+| learn-skill → job-runner | 能力卡 | `<技能包>/tasks/<task>.json` |
+| learn-skill → job-runner | 语义定位器 | `<技能包>/pages/selectors.json` |
+| job-runner → learn-skill | 缺口与补学单 | `~/.agents/jobs/runs/<run-id>/gaps.json` / `gaps-brief.md` |
+
+**被调用的样子**（job 里这么引用你的知识）：
+
+```jsonc
+{ "id": "collect", "kind": "skill",
+  "use": "<你的技能名>/<任务名>",     // ← 对应 tasks/<任务名>.json
+  "inputs": { "key": "${item}" },
+  "out": "artifacts/collected/${item}.csv" }
+```
+
+编排侧跑到这一步会**暂停**（退出码 3），把能力卡连同 `selectors`、期望产物、证据目录交给 agent；
+agent 按 §3 的通道优先级操作、每步截图、写回结果，再续跑。所以：
+
+- **卡片字段要准**：`inputs` 名字对不上、`outputs.path` 不是 run 目录内的相对路径、`effects` 写小，
+  都会让编排侧跑不动或把人闸门绕过去；
+- **`automationBoundary` 要写实**：写"全部可自动"而实际有验证码，等于给编排侧埋雷；
+- **版本要对齐**：job 用 `requires.skills` 声明需要的版本，你补学后 `meta.json` 的 `version` +0.1，
+  编排侧才能判断知识是否够新；
+- **收到缺口先补学再回写**，补完后编排侧直接 `resume` 就能用上新知识（不需要重跑整个作业）。
+
+反过来也要守边界：**不要自己去改 job 定义**。流程拆得对不对是编排侧的事，
+你只负责「这个系统的这个任务到底怎么做」。
 
 ---
 
