@@ -171,6 +171,27 @@ def parse_selectors(text: str, steps: list) -> dict:
                                   "首次实跑后请按实测校正 by/action 并补 waits"}
 
 
+def parse_needs_human(text: str, params: list) -> list:
+    """从配方里推「哪一步必须人」。
+
+    真跑踩过的坑：第一版把 `automationBoundary.needsHuman` 一律写成 `[]`，
+    结果 `login` 卡的放行/执行指令里**没有任何"凭据要找用户要"的提示**——
+    而配方明明写着「凭据来源：由用户提供」。铁律 12 要求写清这一步，不能空着。
+    """
+    needs = []
+    user_params = [p["name"] for p in params
+                   if "由用户提供" in p.get("desc", "") or "用户现场提供" in p.get("desc", "")]
+    if user_params:
+        needs.append("入参由用户**现场提供**（不进 job 入参、不落盘）："
+                     + "、".join(f"${{{n}}}" for n in user_params))
+    # 只在配方**明确要求人参与**时才写（避免把"界面上有验证码"这类泛泛描述都算进来）
+    if re.search(r"由人(读|填|确认)|人工(确认|审核|读)|短信确认|必须由人", text):
+        needs.append("配方明确写了需要人工参与的步骤——执行前先读 tasks/<task>.md 的「前置条件 / 异常分支」")
+    if re.search(r"验证码", text) and re.search(r"输入验证码|填验证码|验证码输入", text):
+        needs.append("验证码需人读取（禁止自动 OCR 破解）")
+    return needs
+
+
 def parse_side_effects(text: str) -> tuple:
     """返回 (是否明确只读, 原文摘要)。
 
@@ -241,9 +262,11 @@ def build_card(skill: str, task: str, title: str, text: str, version: str) -> di
         "_secrets_note": "本卡不写凭据值；登录所需凭据由用户在运行时提供（见 tasks/login.md）。",
         "selectors": sel,
         "automationBoundary": {
-            "needsHuman": [],
-            "notes": "本卡按「只读」判定生成，不产生业务数据变更。若实跑中发现它有写副作用，"
-                     "必须立即把 effects 改为 write 并补 impact + readback（低报副作用会被 validate 拒绝）。",
+            "needsHuman": parse_needs_human(text, params),
+            "notes": "只读卡：不需要人放行。但「needsHuman」列出的步骤必须由人完成——"
+                     "涉及凭据的入参**由用户现场提供，不进 job 入参、不写进任何文件**"
+                     "（job 的 inputs 会原样落进 run.json）。"
+                     "若实跑中发现本卡有写副作用，必须立即把 effects 改为 write 并补 impact + readback。",
         },
         "steps": [{"n": s["n"], "do": s["do"],
                    "expect": s["expect"] or "（配方未写预期反馈）"} for s in steps],
