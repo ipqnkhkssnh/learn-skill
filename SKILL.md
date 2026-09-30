@@ -61,6 +61,14 @@ whenToUse: 用户给出录屏/视频/截图序列并要求"学会"其中操作�
     只有确实无语义的界面（自绘/Canvas/游戏类）才记坐标，并注明分辨率。
 12. **自动化边界要写清**：卡片里必须有 `automationBoundary`——哪一步需要人（验证码、短信确认、
     审批），哪些步骤允许自动做。不写清楚，编排侧就只能靠猜。
+13. **写路径要标"成色"**：`effects != read` 的卡必须写 `evidenceLevel`——
+    `observed`（只在录屏里看到、没实操）与 `verified-repeat`（多次跑通）在编排侧是**两种东西**：
+    前者只能单件 + 人闸门，后者才允许批量放行。**不许把"看到"写成"跑通过"。**
+14. **写了什么，就得能读回来核对**：写路径的卡必须有 `readback`（用只读任务重读一次 +
+    比对字段值）。没有 API 的系统里，"界面上弹了成功提示"不算判据——那正是假成功的来源。
+15. **能走接口就别学点界面**：先看目标系统有没有 MCP / API，有就优先把能力卡写成
+    `channel: mcp` / `api`。界面操作是整个链路里精度最低、最容易碎的一环——
+    录屏学习是没有接口时的退路，不是首选。
 
 ## 2. 模式 A 标准流程
 
@@ -189,6 +197,9 @@ bash "$SKILL_DIR/scripts/validate_skill.sh" ~/.agent/skills/erp-order-management
 - [ ] 每条界面描述都有帧序号或实测证据支撑
 - [ ] **每个任务都有同名能力卡 `tasks/<task>.json`**，且 `outputs` 是 run 目录内的相对路径
 - [ ] **卡片写了 `effects`、`automationBoundary`（哪步要人）、`verify`**
+- [ ] **写路径的卡写了 `evidenceLevel` + `evidenceBasis` + `impact` + `readback`**，
+      且等级没写高（只看到就写 `observed`）
+- [ ] **`channel` 按接口优先选**：有 MCP/API 就没写 GUI 通道（写 `mcp` 的必须给 `mcp.server/tool`）
 - [ ] **界面定位写进了 `pages/selectors.json`**，没有拿裸坐标当知识
 - [ ] `meta.json` 的 `unknowns` 如实列出（尤其界面上看到但没操作过的功能）
 - [ ] 无凭据、无真实客户数据
@@ -202,9 +213,14 @@ bash "$SKILL_DIR/scripts/validate_skill.sh" ~/.agent/skills/erp-order-management
 
 | 优先级 | 通道 | 何时用 | 判定 |
 |---|---|---|---|
-| 1 | **`remote-a2desk`** | 默认首选：远程 Linux VM + 虚拟桌面，隔离、不打扰用户本机、可快照重放 | 工具列表里存在 `mcp__remote-a2desk__*` |
+| 0 | **目标系统自带的 MCP / API** | **首选**：确定性调用、结构化返回、可回读、不抢鼠标键盘 | 工具列表里存在该系统的 `mcp__<系统>__*`（如 `mcp__bbcs__*`） |
+| 1 | **`remote-a2desk`** | 没有接口时的默认首选：远程 Linux VM + 虚拟桌面，隔离、不打扰用户本机、可快照重放 | 工具列表里存在 `mcp__remote-a2desk__*` |
 | 2 | **`local-a2desk`** | 远程不可用/目标系统只能在本地访问 | 存在 `mcp__local-a2desk__*` |
 | 3 | **Playwright MCP（无头浏览器）** | 目标在浏览器里、且必须在本机操作 | 存在 `mcp__playwright__*`（或同类命名） |
+| 4 | **`human`** | 验证码、短信确认、审批 | 写进卡片的 `automationBoundary.needsHuman` 与 `channel: human` |
+
+**接口优先**：能调 MCP/API 就别去点界面——界面操作是精度最低、最容易碎的一环。
+AI 在界面上"可能不准"的担心，最有效的解法是让 AI **少做界面**，而不是指望它点得更准。
 
 **"首选远程"不是"无脑远程"**：远程不可用时（MCP 未配置、连接失败、截图黑屏/超时、远程访问不到目标系统（内网/VPN）、远程 VM 没起）要**明确说明降级原因**，再切本机。
 

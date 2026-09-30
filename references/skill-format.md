@@ -132,11 +132,29 @@ whenToUse: 需要在 ERP 中查询订单、查看订单详情、提交订单时�
 | `version` | 与本技能 `state/meta.json` 的 `version` 保持一致（补学后一起改） |
 | `inputs[].name` | 必须与 `tasks/<task>.md` 的「参数」表一一对应，名字不许两样 |
 | `outputs[].path` | **必须是 run 目录内的相对路径**（如 `artifacts/orders/*.csv`），不许绝对路径或 `..` |
-| `effects` | 按最坏情况写：会改业务状态就是 `write`，会发给客户就是 `outbound` |
+| `effects` | 按最坏情况写：会改业务状态就是 `write`，会发给客户就是 `outbound`。**低报会被 validate 拒绝**（编排侧取更严的那个） |
+| `channel` | 按 `mcp > api > remote-a2desk > local-a2desk > playwright > human` 选：**有确定性接口就别写 GUI 通道**。写 `mcp` 时必须同时给 `mcp.server` + `mcp.tool` |
 | `automationBoundary.needsHuman` | 验证码/短信/审批这类必须人的步骤，一条都别漏 |
 | `verify` | 用数据层判据（键唯一/行数守恒/合计相等），不要写"看到提示条" |
 | `secretsRef` | 只写 `ref:xxx`，**永远不写凭据值** |
 | `selectors` | 语义定位；与 `pages/selectors.json` 对应页面的条目保持一致 |
+
+**写路径（`effects != read`）额外必填三件套**（v2 契约，缺任何一个 validate 直接拒绝）：
+
+| 字段 | 回答的问题 | 纪律 |
+|---|---|---|
+| `evidenceLevel` | **这张卡多可信？** | `unknown`（没见过；写操作会被直接拒绝）< `observed`（录屏里看到、**没实操**：只能单件 + 人闸门，禁止批量）< `verified-once`（实测过 1 次）< `verified-repeat`（多次/回归过，才允许一次批量放行）。**只看到 ≠ 跑通过，别写高** |
+| `evidenceBasis` | 凭什么定这个等级 | 一句话写清依据（`2026-09-27 录屏 f018-f024，未实操` / `2026-10-01 测试租户实测通过`） |
+| `impact` | **写错了会怎样？** | `{blastRadius, count, reversible, note}`。`reversible: false` 时 `effects` 要写 `irreversible`（不许低报） |
+| `readback` | **写完拿什么核对？** | `{how: skill\|tool, use/run, out, expect[]}`。`how: skill` = 让 agent 用只读任务重读一次；`how: tool` = 跑脚本自动回读；`expect` 用不变量，最好用 `field_equals` / `field_in` / `no_duplicate_side_effect` |
+
+为什么这三样是硬要求：**没有 API 的系统拿不到数据层**，"写成功了吗"就只能靠界面提示条——
+而"弹了成功提示、其实写错对象/被回滚/没生效"是这类系统最常见的假成功。
+`readback` 是唯一能把它变成可判定事实的手段，编排引擎会在写之后自动执行它。
+
+等级怎么升：模式 B 实测通过一次 → `observed` 改 `verified-once`；同类任务多次跑通/回归过 →
+`verified-repeat`。**等级不升，编排侧就只能把它当「没实测过」处理**（每件都要人放行、禁止批量），
+所以升等级是补学的一部分，不是可选项。
 
 选择器集用 `templates/selectors.template.json`（放成 `pages/selectors.example.json`）。
 规矩：`by` 用语义类型（`menu`/`button`/`label`/`row-action`…）而不是坐标；
@@ -175,7 +193,8 @@ whenToUse: 需要在 ERP 中查询订单、查看订单详情、提交订单时�
   "envClass": "test",
   "capabilities": [
     {"task": "query-orders", "card": "tasks/query-orders.json", "effects": "read", "verified": true},
-    {"task": "submit-order", "card": "tasks/submit-order.json", "effects": "write", "verified": false}
+    {"task": "submit-order", "card": "tasks/submit-order.json", "effects": "write",
+     "verified": false, "evidenceLevel": "observed", "readback": "tasks/query-order-detail.json"}
   ],
   "secretsRef": ["ref:erp-account"],
   "unknowns": [
@@ -193,7 +212,7 @@ whenToUse: 需要在 ERP 中查询订单、查看订单详情、提交订单时�
 |---|---|
 | `systems[]` | 一个技能可能横跨多个系统（例：ERP + 第三方平台），编排侧要据此判断前置条件 |
 | `envClass` | `test` / `prod` / `any`：写操作前判断这是哪个环境 |
-| `capabilities[]` | 能力索引：任务名 → 卡片路径 → 副作用 → 是否验证过；编排侧据此快速回答「能不能自动做」 |
+| `capabilities[]` | 能力索引：任务名 → 卡片路径 → 副作用 → 证据等级（`evidenceLevel`）→ 是否验证过；编排侧据此快速回答「能不能自动做、能不能批量」 |
 | `secretsRef[]` | 凭据**引用**清单（只有名字，永远没有值） |
 
 `unknowns[].status` 取值：`needs-exploration`（需要真机点一遍）/ `needs-user-input`（要问用户）/ `blocked`（当前环境做不到）。
@@ -294,7 +313,9 @@ CHANGELOG 每条（倒序，最新在上）：
 | 文件 | 改什么 |
 |---|---|
 | `tasks/<new>.md` | 新增任务配方（参数化、每步预期反馈、成功判据、副作用、异常分支） |
-| `tasks/<new>.json` | **同步产出/更新能力卡**（入参、产物、effects、automationBoundary、verify）；改了 md 不改卡 = 编排侧还在用旧知识 |
+| `tasks/<new>.json` | **同步产出/更新能力卡**（入参、产物、effects、channel、automationBoundary、verify；写路径还要 evidenceLevel/evidenceBasis/impact/readback）；改了 md 不改卡 = 编排侧还在用旧知识 |
+| 卡片的 `evidenceLevel` | **实测通过就把等级升上去**：首次跑通 → `verified-once`；多次/回归过 → `verified-repeat`。等级不升，编排侧只会把它当"没实测过"（每件都要人放行、禁止批量） |
+| 卡片的 `readback` | 写路径补上"重新读一次 + 比对字段值"的判据；实测中发现的稳定回读方式（哪个只读页面/字段）写进 `expect` |
 | `pages/*.md` | 补充/修正页面结构：新按钮的行为、前置条件、禁用规则 |
 | `pages/selectors.json` | 补充/纠正语义定位器（新按钮文字、改名后的标签、新的等待条件） |
 | `SKILL.md` | 能力清单状态更新（⚠️ → 🟡/✅）、任务索引加一行、unknowns 划掉 |
