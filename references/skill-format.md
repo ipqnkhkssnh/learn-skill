@@ -124,7 +124,13 @@ whenToUse: 需要在 ERP 中查询订单、查看订单详情、提交订单时�
 哪一步必须人来、怎么判断它做对了。所以每个任务都要有一张能力卡。
 
 能力卡骨架用 `templates/capability.template.json`（`init_skill.sh` 会放成
-`tasks/_capability.example.json`）。字段含义与硬性要求见 `job-runner/references/job-format.md` §5，
+`tasks/_capability.example.json`）。
+
+> **批量补卡**：一个技能常常「配方齐了但只有少数任务有卡」。用
+> `scripts/scaffold_cards.py` 从 `tasks/*.md` 派生——**只读任务可以派生**，
+> **写路径必须实测补**（`effects` 决定闸门，散文判定会把 `create-product` 这类误标成只读）。
+> 详见 `SKILL.md` §5.4。
+字段含义与硬性要求见 `job-runner/references/job-format.md` §5，
 这里只强调写作纪律：
 
 | 字段 | 纪律 |

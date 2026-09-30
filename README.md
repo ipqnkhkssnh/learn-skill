@@ -137,6 +137,7 @@ pwsh -File "$SkillDir\scripts\validate_skill.ps1" erp-order-management
 | `scripts/frames_to_base64.py` | 跨平台 | 把帧打成 base64 批次喂多模态模型 |
 | `scripts/init_skill.sh` / `.ps1` | 对应平台 | 初始化技能包骨架（`.sh` 与 `.ps1` 产物逐字节一致，UTF-8 无 BOM） |
 | `scripts/validate_skill.sh` / `.ps1` | 对应平台 | 校验技能包（结构 / frontmatter / meta / 覆盖率 / 凭据 / 泛化） |
+| `scripts/scaffold_cards.py` | 跨平台 | 从 `tasks/*.md` 补能力卡：只读可派生、写路径出草稿待实测（见 SKILL.md §5.4） |
 | `scripts/install.ps1` | Windows | 复制安装到 `~\.agents\skills`，不使用符号链接 |
 
 ### 抽帧常用参数

@@ -29,6 +29,7 @@ whenToUse: 用户给出录屏/视频/截图序列并要求"学会"其中操作�
 | 抽帧 | `extract_frames.sh`（swift → ffmpeg → OpenCV） | `extract_frames.ps1`（ffmpeg → OpenCV） |
 | 初始化技能包 | `init_skill.sh` | `init_skill.ps1` |
 | 校验技能包 | `validate_skill.sh` | `validate_skill.ps1` |
+| **补能力卡**（跨平台 python3） | `scaffold_cards.py` —— 见 §5.4 | 同左（Windows 下用 `python`） |
 | 安装到技能根 | 手动 `cp -R`（见 `README.md`） | `install.ps1`（复制，不用符号链接） |
 | 逐帧 OCR（`--ocr on`） | ✅ 仅 macOS（Vision） | ❌ 明确提示后忽略 → 用 tesseract / paddleocr 单独跑 |
 | base64 打包、操作通道（a2desk / Playwright） | ✅ | ✅（需要 python；a2desk 本身支持 Windows） |
@@ -183,6 +184,31 @@ python3 ~/.agent/skills/job-runner/scripts/jobctl.py card erp-order-management/q
 ```
 
 **技能名必须是小写 kebab-case ASCII**（如 `erp-order-management`），中文只出现在标题和正文里。
+
+### Step 5.4 · 补卡（老技能缺卡时用，也可给新技能起骨架）
+
+一个技能常常"配方齐了但只有少数任务有卡"。用 `scaffold_cards.py` 从 `tasks/*.md` 批量补，
+但**必须按「读路径可以派生、写路径必须实测」切分**：
+
+```bash
+S=~/.agents/skills/learn-skill/scripts/scaffold_cards.py
+python3 "$S" ~/.agents/skills/<skill>                      # ① 只体检，不动文件
+python3 "$S" ~/.agents/skills/<skill> --draft-all          # ② 全部缺卡任务出草稿到 tasks/.drafts/
+python3 "$S" ~/.agents/skills/<skill> --promote-read a,b   # ③ 只把判定为只读的提升成正式卡
+```
+
+- **草稿**放在 `tasks/.drafts/`：不参与 `validate_skill` / `jobctl audit`，每份带 `_judgment`
+  写清缺什么（首要是判 `effects`）。
+- **写路径不要派生**：`effects` 决定闸门，而配方只用散文描述它。实测反例：
+  `create-product.md` 的「副作用」写"新建产品本身不改动**已有**数据"——按文字判定会得到"只读"，
+  而它在创建业务数据。**把写路径标成 `read` = 绕过写闸门**，是本系统里最危险的错误方向。
+  所以工具有一道**机械硬闸**：任务名不是只读动词，就永远不许提升为只读卡。
+- 写路径的卡缺的是 `impact`（错多大）与 `readback`（拿什么核对），**这两样只能实测得到**——
+  按 §7 模式 B 一条条补（参考 `sunrise-broadcast-platform` 的 `query-pickup-stats`：
+  实跑一次就纠正了 3 处配方里看不出来的错）。
+- 派生出来的只读卡是 **draft 级**：`selectors` 标 `confidence: inferred`、
+  `outputs` 用统一约定 `artifacts/<task>/records.csv(step,item,value)`。
+  **首次实跑后必须校正并升 `evidenceLevel`**，别让它停留在"看起来能用"。
 
 ### Step 6 · 自检 + 汇报
 
